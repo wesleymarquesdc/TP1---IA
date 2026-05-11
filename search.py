@@ -82,19 +82,19 @@ def evaluate_window(window: List[int], max_player: int) -> float:
 
     score = 0.0
 
-    # max possui uma ameaça imediata
+    # max pode ganhar na sua próxima rodada
     if max_player_count == 3 and empty_count == 1:
-        score += 5
+        score += 5.0
 
-    # max possui uma dupla (ameaça futura)
+    # max possui uma dupla
     elif max_player_count == 2 and empty_count == 2:
         score += 0.2
 
-    # min possui uma ameaça imediata
+    # min pode ganhar na próxima rodada (crítico)
     if min_player_count == 3 and empty_count == 1:
-        score -= 10
+        score -= 10.0
 
-    # min possui uma dupla (ameaça futura)
+    # min possui uma dupla
     elif min_player_count == 2 and empty_count == 2:
         score -= 0.3
 
@@ -162,7 +162,64 @@ def get_terminal_value(winner: int, max_player: int) -> int:
         return 1 if winner == max_player else -1
     return 0
 
-def minimax_decision(board: List[List[int]], max_player: int, max_depth: int):
+class SearchTimeout(Exception):
+    pass
+
+def time_exceeded(start, max_time_ms):
+    return (
+        max_time_ms > 0 and
+        (time.time() - start) * 1000.0 >= max_time_ms - 100
+    )
+
+def iterative_deepening(
+        board: List[List[int]], 
+        max_player: int, 
+        max_depth: int, 
+        start: int,
+        max_time_ms: int,
+        is_alpha_beta: bool = False
+    ) -> int:
+    best_move = None
+    last_completed_depth = 0
+
+    for depth in range(1, max_depth + 1):
+
+        try:
+            move = minimax_decision(
+                board=board,
+                max_player=max_player,
+                max_depth=depth,
+                start=start,
+                max_time_ms=max_time_ms,
+                is_alpha_beta=is_alpha_beta,
+                is_iterative_deepening=True
+            )
+
+            best_move = move
+            last_completed_depth = depth
+
+        except SearchTimeout:
+            break
+
+    print("===========================")
+    print("TEMINOU=", max_time_ms - (time.time() - start) * 1000.0)
+    print("PROFUNDIDADE MAXIMA=", last_completed_depth)
+    print("===========================")
+
+    return best_move
+
+def minimax_decision(
+        board: List[List[int]], 
+        max_player: int, 
+        max_depth: int, 
+        start: int, 
+        max_time_ms: int,
+        is_alpha_beta: bool = False,
+        is_iterative_deepening: bool = False,
+    ) -> int:
+    alpha = float('-inf')
+    beta = float('inf')
+
     best_value = float('-inf')
     best_move = None
 
@@ -170,15 +227,44 @@ def minimax_decision(board: List[List[int]], max_player: int, max_depth: int):
     for move in valid_moves(board):
         new_board = make_move(board, move, max_player)
 
-        value = min_value(new_board, max_player, depth + 1, max_depth)
+        value = min_value(
+            board=new_board, 
+            max_player=max_player, 
+            alpha=alpha,
+            beta=beta,
+            depth=depth + 1, 
+            max_depth=max_depth, 
+            start=start, 
+            max_time_ms=max_time_ms,
+            is_alpha_beta=is_alpha_beta, 
+            is_iterative_deepening=is_iterative_deepening
+        )
 
         if value > best_value:
             best_value = value
             best_move = move
 
+        if is_alpha_beta:
+            alpha = max(alpha, value)
+
     return best_move
 
-def max_value(board: List[List[int]], max_player: int, depth: int, max_depth: int) -> int:
+def max_value(
+        board: List[List[int]], 
+        max_player: int, 
+        alpha: int, 
+        beta: int, 
+        depth: int, 
+        max_depth: int, 
+        start: int, 
+        max_time_ms: int,
+        is_alpha_beta: bool,
+        is_iterative_deepening: bool
+    ) -> int:
+    if is_iterative_deepening:
+        if time_exceeded(start, max_time_ms):
+            raise SearchTimeout()
+    
     is_terminal, winner = terminal(board)
     if is_terminal:
         return get_terminal_value(winner, max_player)
@@ -192,12 +278,44 @@ def max_value(board: List[List[int]], max_player: int, depth: int, max_depth: in
 
         value = max(
             value,
-            min_value(new_board, max_player, depth + 1, max_depth)
+            min_value(
+                board=new_board, 
+                max_player=max_player, 
+                alpha=alpha,
+                beta=beta,
+                depth=depth + 1, 
+                max_depth=max_depth, 
+                start=start, 
+                max_time_ms=max_time_ms,
+                is_alpha_beta=is_alpha_beta, 
+                is_iterative_deepening=is_iterative_deepening
+            )
         )
+
+        if is_alpha_beta:
+            if value >= beta:
+                return value
+            
+            alpha = max(alpha, value)
 
     return value
 
-def min_value(board: List[List[int]], max_player: int, depth: int, max_depth: int) -> int:
+def min_value(
+        board: List[List[int]], 
+        max_player: int, 
+        alpha: int, 
+        beta: int, 
+        depth: int, 
+        max_depth: int, 
+        start: int, 
+        max_time_ms: int,
+        is_alpha_beta: bool, 
+        is_iterative_deepening: bool
+    ) -> int:
+    if is_iterative_deepening:
+        if time_exceeded(start, max_time_ms):
+            raise SearchTimeout()
+
     is_terminal, winner = terminal(board)
     if is_terminal:
         return get_terminal_value(winner, max_player)
@@ -213,8 +331,25 @@ def min_value(board: List[List[int]], max_player: int, depth: int, max_depth: in
 
         value = min(
             value,
-            max_value(new_board, max_player, depth + 1, max_depth)
+            max_value(
+                board=new_board, 
+                max_player=max_player, 
+                alpha=alpha,
+                beta=beta,
+                depth=depth + 1, 
+                max_depth=max_depth, 
+                start=start, 
+                max_time_ms=max_time_ms,
+                is_alpha_beta=is_alpha_beta,
+                is_iterative_deepening=is_iterative_deepening
+            )
         )
+        
+        if is_alpha_beta:
+            if value <= alpha:
+                return value
+            
+            beta = min(beta, value)
 
     return value
 
@@ -238,13 +373,9 @@ def choose_move(board: List[List[int]], turn: int, config: Dict) -> Tuple[int, D
     turn = int(turn)
 
     print(f"AI choose_move called with max_time_ms={max_time_ms}, max_depth={max_depth}, player={turn}")
-    
+
     start = time.time()
 
-    # Função auxiliar para checar tempo decorrido   
-    def time_exceeded():
-        return max_time_ms > 0 and (time.time() - start) * 1000.0 >= max_time_ms
-    
     legal = valid_moves(board)
 
     move = 0
@@ -252,7 +383,22 @@ def choose_move(board: List[List[int]], turn: int, config: Dict) -> Tuple[int, D
         # Sem jogadas: devolve 0 por convenção (servidor lida com isso)
         return move
 
-    move = minimax_decision(board, turn, max_depth)
+    # move = minimax_decision(
+    #     board=board, 
+    #     max_player=turn, 
+    #     max_depth=max_depth, 
+    #     start=start,
+    #     max_time_ms=max_time_ms,
+    #     is_alpha_beta=False
+    # )
+    move = iterative_deepening(
+        board=board,
+        max_player=turn, 
+        max_depth=max_depth, 
+        start=start,
+        max_time_ms=max_time_ms,
+        is_alpha_beta=True
+    )
 
     return move
 
