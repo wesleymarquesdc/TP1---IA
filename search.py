@@ -180,7 +180,6 @@ def iterative_deepening(
         is_alpha_beta: bool = False
     ) -> int:
     best_move = None
-    last_completed_depth = 0
 
     for depth in range(1, max_depth + 1):
 
@@ -196,15 +195,9 @@ def iterative_deepening(
             )
 
             best_move = move
-            last_completed_depth = depth
 
         except SearchTimeout:
             break
-
-    print("===========================")
-    print("TEMINOU=", max_time_ms - (time.time() - start) * 1000.0)
-    print("PROFUNDIDADE MAXIMA=", last_completed_depth)
-    print("===========================")
 
     return best_move
 
